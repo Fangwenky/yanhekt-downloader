@@ -1,0 +1,32 @@
+# 本地录播、下载分片与临时文件
+download/
+downloads/
+*.mp4
+*.m4v
+*.mkv
+*.mov
+*.webm
+*.m3u8
+*.aac
+*.m4a
+*.mp3
+*.wav
+*.part
+*.ytdl
+
+# 登录会话、任务记录和本机配置
+.state/
+.env
+.env.*
+!.env.example
+
+# Python 虚拟环境与缓存
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# 系统文件与运行日志
+.DS_Store
+Thumbs.db
+*.log

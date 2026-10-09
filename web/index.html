@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="local-token" content="__API_TOKEN__"><title>延河课堂 · 录播下载</title><link rel="stylesheet" href="/style.css"><script defer src="/app.js"></script></head>
+<body>
+<header class="topbar"><a class="brand" href="/" aria-label="延河课堂下载工具首页"><span class="brandmark">延</span><span>延河课堂<small>录播下载工具</small></span></a><div class="account"><span id="auth-status" class="tag">检查登录中</span><button id="login">统一认证登录 ↗</button><button id="check-auth" class="quiet">检查登录</button></div></header>
+<main>
+<div class="page-heading"><div><p class="eyebrow">BIT / COURSE ARCHIVE</p><h1>把课堂，留在本地。</h1><p class="muted">拉取你的课程，选择已有回放，批量保存视频。</p></div><div class="heading-action"><button id="refresh" class="primary">↻ 拉取课程</button><button id="open-folder">打开下载目录 ↗</button></div></div>
+<div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+<section class="settings" aria-label="下载设置"><div class="directory"><label for="outdir">保存目录</label><input id="outdir" type="text" autocomplete="off"><button id="save-dir" class="quiet">保存</button></div><fieldset><legend>下载画面</legend><label><input type="checkbox" name="stream" value="teacher" checked>教师</label><label><input type="checkbox" name="stream" value="ppt">PPT</label><label><input type="checkbox" name="stream" value="student">学生</label></fieldset><span id="parallel" class="muted"></span></section>
+<nav class="tabs" aria-label="页面"><button id="courses-tab" aria-current="page">课程与回放 <span id="course-count">0</span></button><button id="jobs-tab">下载队列 <span id="job-count">0</span></button></nav>
+<section id="courses-view" class="workspace">
+<aside class="course-panel" aria-label="课程列表"><div class="panel-heading"><h2>我的课程</h2><span id="visible-count" class="muted">0 门</span></div><label class="sr-only" for="search">搜索课程或教师</label><input id="search" type="search" placeholder="搜索课程或教师…"><label class="sr-only" for="term">学期</label><select id="term"><option value="">全部学期</option></select><div class="bulk-courses"><label><input id="all-courses" type="checkbox">全选当前列表</label><button id="bulk" class="quiet" disabled>下载所选课程</button></div><div id="course-list" class="course-list"><div class="empty">完成统一认证后，点击“拉取课程”。</div></div></aside>
+<div class="replay-panel"><div class="replay-header"><div><p id="course-meta" class="eyebrow">课程回放</p><h2 id="course-title">选择一门课程</h2><p id="replay-count" class="muted">已有回放会显示在这里。</p></div><button id="download" class="primary" disabled>下载所选回放</button></div><div class="table-wrap"><table><thead><tr><th class="check-col"><input id="all-replays" type="checkbox" aria-label="全选可下载回放" disabled></th><th>课时 / 录制日期</th><th>教师</th><th>回放状态</th></tr></thead><tbody id="replays"><tr><td colspan="4"><div class="empty tall"><span class="empty-icon">▤</span><p>从左侧选择课程</p><small>可选择一节回放，也可批量下载整门课程。</small></div></td></tr></tbody></table></div><p class="panel-note">未开始或尚未生成的回放无法下载。若课程未提供某种画面，对应任务会提示失败。</p></div>
+</section>
+<section id="jobs-view" hidden><div class="queue-header"><h2>下载队列</h2><p id="queue-summary" class="muted">尚无下载任务</p></div><div id="jobs" class="jobs"></div></section>
+<footer><span>本机运行 · 登录会话仅保存在本地</span><span id="footer-status">准备就绪</span></footer>
+</main>
+</body></html>
