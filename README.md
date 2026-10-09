@@ -1,205 +1,140 @@
-# 延河课堂录播下载工具
+# 延河课堂 · 课程与录播管理
 
-面向北京理工大学新版[延河课堂](https://aita.yanhekt.cn/education/?tenant_code=21#/home?menu_code=C-xswdkc,-1)的本地网页工具。通过北理统一认证后，自动获取个人课程列表，查看已有回放，并批量下载到电脑。
+北京理工大学新版[延河课堂](https://aita.yanhekt.cn/education/?tenant_code=21#/home?menu_code=C-xswdkc,-1)的本地桌面软件。支持 **macOS（Apple Silicon）和 Windows（x64）**，通过北理统一认证拉取个人课程，查看回放，长期跟踪更新并批量下载到统一视频目录。
+
+## 下载与安装
+
+在 [Releases](https://github.com/Fangwenky/yanhekt-downloader/releases) 下载对应系统的安装包：
+
+| 系统 | 文件 | 启动方式 |
+| --- | --- | --- |
+| macOS / Apple Silicon | `Yanhekt-macOS-arm64.zip` | 解压，将「延河课堂.app」放入「应用程序」，双击打开 |
+| Windows 10 / 11，64 位 | `Yanhekt-Windows-Setup.exe` | 运行安装向导，通过桌面或开始菜单快捷方式打开 |
+
+安装包内置 Python、Chromium、FFmpeg 和下载器，无需自行安装开发环境。Windows 安装程序会在缺少 WebView2 时通过微软官方引导程序安装，首次安装此组件需要联网。[WebView2 部署说明](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/distribution)。
+
+当前安装包没有 Apple 开发者公证或 Windows 代码签名。macOS 若提示无法验证开发者，可在「系统设置 → 隐私与安全性」中允许打开已下载的应用。Windows 若显示 SmartScreen，可核对下载来源后选择「更多信息 → 仍要运行」。Intel Mac 暂未提供预构建包，可从源码运行或在 Intel Mac 上自行构建。
+
+尚未发布的构建也可从 [GitHub Actions](https://github.com/Fangwenky/yanhekt-downloader/actions/workflows/build-desktop.yml) 的成功运行中下载 Artifacts（需登录 GitHub，保存 30 天）。
 
 ## 功能
 
-| 功能 | 说明 |
-| --- | --- |
-| 统一认证登录 | 在独立 Chromium 窗口完成学校认证，使用认证页面提供的密码、短信或扫码等登录方式；工具不收集账号密码 |
-| 自动拉取课程 | 分页获取账号“我的课程 / 全部课程”中的课程，支持课程名称、教师和学期筛选 |
-| 查看已有回放 | 展示课程课时、教师及回放状态，未开始或尚未生成回放的课时不可勾选 |
-| 批量下载 | 下载勾选的课时，或一次下载多门课程的全部已有回放 |
-| 选择视频画面 | 支持教师、PPT、学生画面，按所选画面分别保存文件，实际可用画面取决于课程 |
-| 下载队列 | 显示任务状态、进度、速度和预计剩余时间；默认同时运行 2 个任务 |
-| 取消与重试 | 可取消任务、重试失败任务；支持下载器及服务端允许的断点续传 |
-| 任务去重与恢复 | 跳过正在排队或已完成且文件仍存在的任务；重启后可重试中断任务 |
-| 文件整理 | 按学期、课程、课时及视频画面保存，保存目录可在页面中修改 |
-
-## 环境要求
-
-- Python **3.10 或更高版本**。
-- **FFmpeg**，安装后需要能在终端运行 `ffmpeg`。
-- 能打开 Chromium 的本机桌面环境，以及访问延河课堂和北理统一认证网站的网络。
-- 具有对应课程访问权限的北理账号。
-
-当前已在 macOS 上验证。Linux、Windows 可使用下面的手动安装方式；Linux 登录需要图形桌面环境。
-
-## 快速开始（macOS）
-
-### 1. 获取源码
-
-```sh
-git clone https://github.com/Fangwenky/yanhekt-downloader.git
-cd yanhekt-downloader
-```
-
-### 2. 安装 FFmpeg
-
-已安装 Homebrew 的用户可运行：
-
-```sh
-brew install ffmpeg
-```
-
-确认 Python 和 FFmpeg 可用：
-
-```sh
-python3 --version
-ffmpeg -version
-```
-
-### 3. 启动工具
-
-```sh
-./run.sh
-```
-
-首次启动会创建 `.venv/`，安装 Python 依赖及 Playwright Chromium，然后启动本地服务并打开浏览器：
-
-**<http://127.0.0.1:8765>**
-
-运行期间保留终端窗口。按 `Ctrl+C` 停止服务，下次运行 `./run.sh` 即可再次启动。
-
-## 手动安装
-
-先安装 Python 和 FFmpeg，并将 FFmpeg 加入系统 `PATH`。
-
-### macOS / Linux
-
-在项目目录执行：
-
-```sh
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
-.venv/bin/playwright install chromium
-.venv/bin/python app.py
-```
-
-Linux 若缺少 Chromium 系统依赖，可将浏览器安装步骤替换为：
-
-```sh
-.venv/bin/playwright install --with-deps chromium
-```
-
-### Windows（PowerShell）
-
-在项目目录执行，无需激活虚拟环境：
-
-```powershell
-py -3 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe -m playwright install chromium
-.\.venv\Scripts\python.exe app.py
-```
+- **统一认证**：在独立 Chromium 登录窗口使用学校提供的密码、短信、扫码等认证方式，不在软件界面收集密码。
+- **个人课程**：分页拉取全部个人课程，按课程名称、教师、学期筛选，查看可下载、未开始或暂无回放的课时。
+- **课程跟踪**：保存关注的课程，显示已有回放、已保存课时、待补齐课时与新回放数量。
+- **检查更新**：手动检查跟踪课程，也可每 15 / 30 / 60 / 120 分钟检查；定时检查仅在软件运行期间执行。
+- **自动补齐**：每门课程单独开启，默认关闭。开启后将下载跟踪画面的全部缺失回放，包含旧课时和后续新回放。
+- **批量下载**：勾选课时、多门课程，或一键「补齐缺失回放」；教师、PPT、学生画面分别保存，实际可用画面取决于课程。
+- **统一资料库**：在同一个根目录内按学期、课程整理视频，搜索本地文件并使用系统播放器打开；扫描原目录可识别旧版已下载视频。
+- **下载队列**：两个并行任务，显示进度、速度和剩余时间，支持取消、失败重试与下载器/服务端允许的断点续传。
+- **持久记录**：关闭软件后保留课程缓存、跟踪设置、目录与任务记录；已下载且文件仍存在的视频自动跳过，中断任务下次可手动重试。
 
 ## 使用方法
 
-1. **完成登录**：点击“统一认证登录”，在弹出的 Chromium 窗口中自行完成北理认证。回到工具页面点击“检查登录”；登录窗口打开后，工具也会定期检查登录状态。
-2. **获取课程**：登录成功后会自动拉取课程。需要更新列表时点击“拉取课程”，可按课程、教师或学期筛选。
-3. **选择画面**：在“下载画面”中勾选教师、PPT 或学生画面。每种画面对应一个独立的视频文件。
-4. **选择下载内容**：点击左侧课程，勾选右侧已有回放，点击“下载所选回放”；或勾选左侧多门课程，点击“下载所选课程”，下载这些课程的全部已有回放。“全选当前列表”只选择当前筛选结果。
-5. **查看下载**：切换“下载队列”，查看进度、取消任务或重试失败任务。点击“打开下载目录”查看文件。
+1. 打开软件，点击「统一认证登录」，在弹出的浏览器完成北理认证。回到软件点击「检查登录」，或等待自动检查。登录成功后首次自动拉取课程。
+2. 在顶部选择统一的视频保存目录，勾选需要下载的画面。已经使用旧版工具时，选择原来的 `downloads/`，再在「本地资料库」点击「扫描本地文件」。保留原文件名中的课程 ID、课时 ID 和画面标记可正确识别。
+3. 选择一门课程，查看回放与保存状态。点击已保存画面旁的播放按钮，可用系统播放器打开视频。
+4. 勾选「跟踪这门课程」。跟踪会记住当前下载画面，可用「应用当前画面到跟踪设置」更新；顶部画面选择仍用于手动下载。
+5. 点击「检查跟踪课程更新」或设置检查间隔。新增课时或从未生成变为已有回放的课时会标记为新回放；首次检查时已有课时显示为待下载。
+6. 点击「补齐缺失回放」下载当前所选画面的缺失文件。如希望每次检查后自动下载，开启该课程的「自动下载缺失回放」。
+7. 在「下载队列」查看进度；在「本地资料库」搜索、播放与检查视频。
 
-保存目录可以在页面顶部修改并保存，下次启动时继续使用。队列中仍有待完成任务时，需先完成或取消任务才能修改目录；已有任务保留原来的文件路径。
+关闭窗口会停止检查和下载。重新启动后，在队列中重试中断任务；软件不会在关闭后继续后台下载。网络断开或登录过期时仍可查看已缓存课程和本地视频，恢复网络并重新认证后即可更新。
 
-## 启动参数
+## 视频与应用数据
 
-```sh
-./run.sh --port 9000 --outdir "$HOME/Movies/yanhekt" --concurrency 2 --no-open
-```
-
-手动启动时将参数加在 `app.py` 后面：
-
-```sh
-.venv/bin/python app.py --port 9000 --concurrency 1
-```
-
-| 参数 | 默认值 | 说明 |
-| --- | --- | --- |
-| `--port` | `8765` | 本地网页服务端口 |
-| `--outdir` | 上次保存的目录；首次为项目内 `downloads/` | 指定此次运行的下载目录 |
-| `--concurrency` | `2` | 同时运行的下载任务数，可选 `1` 至 `4` |
-| `--no-open` | 不启用 | 启动时不自动打开本地网页，仍可手动访问 |
-
-## 文件保存结构
+所有课程视频保存在用户选择的同一根目录，下层按课程整理，默认目录为 macOS 的 `~/Movies/延河课堂`、Windows 的 `~/Videos/延河课堂`。
 
 ```text
-downloads/
+视频根目录/
 └── 2026-2027-1/
     └── 课程名称_课程ID/
         ├── 课时名称_课时ID_教师画面.mp4
         └── 课时名称_课时ID_PPT画面.mp4
 ```
 
-课程 ID 和课时 ID 用于区分同名课程及回放。文件名中的非法路径字符会自动替换。
-
-## 本地数据与 Git 忽略规则
-
-仓库只包含工具源码、测试、依赖清单和使用文档。以下内容由 `.gitignore` 排除：
-
-| 路径 / 类型 | 内容 |
+| 系统 / 运行方式 | 登录会话、课程缓存与下载记录 |
 | --- | --- |
-| `download/`、`downloads/` | 本地课程录播和下载文件 |
-| `.state/` | 登录会话、任务记录及保存目录配置 |
-| `.venv/`、`venv/` | 本机 Python 虚拟环境 |
-| `__pycache__/`、`*.py[cod]` | Python 编译缓存 |
-| 常见视频、音频、`*.m3u8`、`*.part`、`*.ytdl` | 媒体文件、临时播放列表及下载中间文件 |
-| `.env`、`.env.*`（保留 `.env.example`）、`*.log`、系统文件 | 本机环境配置、日志和系统元数据 |
+| macOS 桌面版 | `~/Library/Application Support/YanhektDownloader/` |
+| Windows 桌面版 | `%APPDATA%/YanhektDownloader/` |
+| 网页版 | 项目内 `.state/` |
 
-`.state/session.json` 包含可复用的登录会话，**不要分享 `.state/` 目录**。需清除工具保存的登录状态时，先停止工具，再删除 `.state/session.json`。
+应用数据不放在安装目录，替换软件或升级不会覆盖历史记录。修改视频目录不会搬动之前的文件，原文件位置仍会保留在资料库中；移动或删除视频后点击扫描可更新状态。队列有待完成任务时，需要先完成或取消，才能修改保存目录。
 
-服务只监听 `127.0.0.1`；写操作会校验本地来源和随机请求令牌。
+`session.json` 包含可复用的登录会话，不要分享应用数据目录。需要清除登录状态时，退出软件后删除这个文件。卸载 Windows 软件会保留应用数据和视频。
+
+从旧工具导入登录与任务记录（可选，保留原视频路径）：
+
+```sh
+# macOS，旧项目路径按实际修改；仅首次导入缺失的应用数据文件
+"/Applications/延河课堂.app/Contents/MacOS/YanhektDownloader" --migrate-from "/path/to/old/project"
+```
+
+```powershell
+# Windows
+& "$env:LOCALAPPDATA\Programs\YanhektDownloader\YanhektDownloader.exe" --migrate-from "C:\path\to\old\project"
+```
+
+## 从源码运行
+
+需要 Python 3.10+、FFmpeg 和本机图形桌面环境。FFmpeg 必须加入 `PATH`，macOS 可运行 `brew install ffmpeg`。
+
+```sh
+git clone https://github.com/Fangwenky/yanhekt-downloader.git
+cd yanhekt-downloader
+python3 -m venv .venv
+.venv/bin/pip install -r requirements-desktop.txt
+.venv/bin/playwright install --no-shell chromium
+.venv/bin/python desktop.py
+```
+
+Windows PowerShell：
+
+```powershell
+py -3 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements-desktop.txt
+.\.venv\Scripts\python.exe -m playwright install --no-shell chromium
+.\.venv\Scripts\python.exe desktop.py
+```
+
+原本的本地网页版仍可使用 `./run.sh`，或安装 `requirements.txt` 和 Chromium 后运行 `python app.py`，地址为 <http://127.0.0.1:8765>。网页版支持 `--port 9000 --outdir /path/to/videos --concurrency 1 --no-open`，并发数可选 1–4。
+
+## 构建桌面安装包
+
+在目标系统上安装 `requirements-desktop.txt` 和 FFmpeg / ffprobe 后执行：
+
+```sh
+python build_desktop.py
+```
+
+脚本安装匹配的 Chromium 并使用 PyInstaller 打包，输出在 `dist/`。macOS 输出 `.app`，Windows 输出包含运行依赖的 `YanhektDownloader/` 文件夹，不能只复制其中一个 `.exe`。Windows 安装包通过 `packaging/windows.iss` 和 Inno Setup 6 构建；完整步骤见 [构建工作流](.github/workflows/build-desktop.yml)。GitHub Actions 分别在 macOS 和 Windows 构建，不做跨平台交叉打包。
 
 ## 常见问题
 
-### 提示未检测到 FFmpeg
+- **登录过期**：重新认证后检查登录，再拉取课程或重试下载。
+- **跟踪后没有自动下载**：跟踪默认只检查更新；需要对这门课程单独开启自动下载，并选择合适的跟踪画面。
+- **自动下载部分画面失败**：课程不一定提供 PPT / 学生画面，在跟踪设置中选择实际提供的画面；这些失败不影响其他任务。
+- **显示回放但视频源已失效**：旧课时元数据可能还在，实际视频可能已被网站删除。可访问的视频才能下载。
+- **续传**：MP4 需服务端支持 HTTP Range；HLS 使用 yt-dlp 分片记录续传，不支持时可能重新下载。
+- **格式支持**：已验证 MP4 和单码率 HLS，多码率 HLS 主播放列表暂不支持。下载开始时通过官网播放器获取鉴权地址，HLS 分片通过官网 XHR 流程逐个获得鉴权参数。
 
-在启动工具的终端运行 `ffmpeg -version`。若命令不可用，请检查 FFmpeg 是否安装并加入 `PATH`，安装后重新打开终端并启动工具。
+## 仓库与验证
 
-### 登录过期或课程拉取失败
-
-点击“重新认证”，完成学校登录后点击“检查登录”，再拉取课程或重试下载。工具只获取当前账号有权限访问的个人课程。
-
-### 某节课没有 PPT / 学生画面
-
-不同课程可能只提供部分视频画面。未提供的画面会显示对应任务失败，不影响其他任务，可改选课程提供的画面。
-
-### 页面显示已有回放，下载却失败或返回 404
-
-旧课时的回放元数据可能仍存在，但实际视频源已删除或不可访问。网络问题或登录失效可重试；已经失效的视频源无法通过工具恢复。
-
-### 中断后如何继续下载
-
-重新启动工具，在“下载队列”中重试已取消或失败的任务。MP4 在服务端支持 HTTP Range 时可续传；HLS 使用 yt-dlp 分片记录续传，服务端不支持时可能重新下载。
-
-### 工具支持哪些回放格式
-
-支持已验证的 MP4 和单码率 HLS 播放列表，使用 yt-dlp 下载并通过 FFmpeg 整理为 MP4。多码率 HLS 主播放列表目前会提示暂不支持。
-
-## 项目结构
+仓库只上传工具部分。`.gitignore` 排除 `download/`、`downloads/`、`.state/`、虚拟环境、音视频、下载分片、环境配置、日志、`build/`、`dist/` 和打包浏览器，任何用户登录、课程记录与录播都不上传。
 
 ```text
-app.py            本地网页服务、下载队列及下载器
-yanhe.py          统一认证会话、课程与回放 API、播放地址获取
-web/              网页界面、样式和交互脚本
-run.sh            macOS / Linux 启动脚本
-requirements.txt  Python 依赖
-test_app.py       解析、队列及下载测试
+desktop.py / desktop.spec     原生窗口、用户数据与桌面打包
+library.py                   课程跟踪、本地视频索引
+app.py / yanhe.py            本地 API、下载队列、学校接口及播放器鉴权
+web/                         课程、资料库和下载队列界面
+packaging/                   Windows 安装向导
+.github/workflows/           macOS / Windows 自动构建
 ```
-
-下载任务开始时使用官网播放器获取新的鉴权地址，HLS 分片也由官网的 XHR 流程逐个获取鉴权参数；临时播放列表会在下载结束后清理。
-
-## 测试
-
-安装依赖及 FFmpeg 后执行：
 
 ```sh
-.venv/bin/python -m unittest -v test_app.py
+python -m unittest -v test_app.py test_library.py
 ```
 
-测试覆盖嵌套课时解析、回放状态、课程分页、跨课程批量去重、取消与重试、任务恢复、MP4 / HLS 下载及输出文件。下载测试使用临时生成的本地视频，不需要学校账号。
+测试覆盖分页、回放解析、批量去重、取消重试、重启恢复、MP4 / HLS 下载、本地文件导入和缺失判断、新回放识别、跟踪与自动下载的区别、旧数据迁移。构建后执行打包程序的 `--smoke-test`，验证包内 Chromium 和 FFmpeg 可运行。学校接口已用实际 macOS 登录会话验证；Windows 构建环境验证不包含学校账号登录。
 
-新版网站接口已于 **2026-10-08** 使用实际登录会话验证。网站接口及播放鉴权方式变化后，工具可能需要相应更新。
-
-相关项目与文档：[Playwright](https://playwright.dev/python/docs/auth)、[yt-dlp](https://github.com/yt-dlp/yt-dlp)、[FFmpeg](https://ffmpeg.org/)。
+第三方组件说明见 [THIRD_PARTY.md](THIRD_PARTY.md)。

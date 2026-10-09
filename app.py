@@ -11,6 +11,7 @@ import subprocess
 import sys
 import threading
 import tempfile
+import time
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -19,16 +20,10 @@ from urllib.parse import urlsplit
 from yt_dlp import YoutubeDL
 
 from yanhe import Yanhe, STREAM_NAMES, safe_name
+from library import Library, write_json
 
 ROOT = Path(__file__).resolve().parent
 STATE = ROOT / ".state"
-
-
-def write_json(path, value):
-    temp = path.with_suffix(".tmp")
-    temp.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
-    temp.chmod(0o600)
-    temp.replace(path)
 
 
 class QuietLogger:
@@ -82,33 +77,93 @@ def download_media(source, destination, progress, cancelled):
 
 
 class App:
-    def __init__(self, outdir, concurrency):
-        self.yanhe = Yanhe(STATE)
-        settings = STATE / "settings.json"
+    def __init__(self, outdir, concurrency, state_dir=None, default_outdir=None):
+        self.state_dir = Path(state_dir or STATE)
+        self.state_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+        self.yanhe = Yanhe(self.state_dir)
+        settings = self.state_dir / "settings.json"
         saved = json.loads(settings.read_text(encoding="utf-8")) if settings.exists() else {}
-        self.outdir = Path(outdir or saved.get("outdir") or ROOT / "downloads").expanduser().resolve()
+        self.outdir = Path(outdir or saved.get("outdir") or default_outdir or ROOT / "downloads").expanduser().resolve()
+        self.interval = int(saved.get('check_minutes', 60))
+        self.library = Library(self.state_dir)
+        self.sync_lock = asyncio.Lock()
+        self.queue_lock = asyncio.Lock()
+        self.sync_task = None
+        self.sync_status = {'running': False, 'message': '', 'last_check': self.library.data['last_check']}
         self.concurrency = concurrency
-        self.courses = []
+        self.courses = self.library.data['courses']
         self.jobs = []
         self.cancel_events = {}
         self.worker_tasks = []
         self.pending = asyncio.Queue()
         self.auth = {"logged_in": False, "name": ""}
         self.loop = asyncio.get_running_loop()
-        path = STATE / "jobs.json"
+        path = self.state_dir / "jobs.json"
         if path.exists():
             self.jobs = json.loads(path.read_text(encoding="utf-8"))
             for job in self.jobs:
                 if job["status"] in ("queued", "resolving", "downloading", "processing"):
                     job.update(status="cancelled", error="上次运行已中断，点击重试继续下载")
+        self.library.scan(self.outdir, self.jobs)
 
     def persist(self):
-        write_json(STATE / "jobs.json", self.jobs)
+        write_json(self.state_dir / "jobs.json", self.jobs)
 
     def snapshot(self):
-        return {"auth": self.auth, "courses": self.courses, "jobs": self.jobs,
+        return {"auth": self.auth, "courses": self.library.summaries(self.jobs), "jobs": self.jobs,
                 "outdir": str(self.outdir), "concurrency": self.concurrency,
-                "ffmpeg": bool(shutil.which("ffmpeg"))}
+                "ffmpeg": bool(shutil.which("ffmpeg")), 'library': list(self.library.data['files'].values()),
+                'sync': self.sync_status, 'check_minutes': self.interval, 'desktop': bool(getattr(self, 'desktop', None)),
+                'replays': {cid: self.library.decorate(cid, rows, self.jobs) for cid, rows in self.library.data['replays'].items()}}
+
+    async def get_replays(self, cid):
+        rows = await self.yanhe.replays(cid)
+        self.library.update_replays(cid, rows)
+        return self.library.decorate(cid, rows, self.jobs)
+
+    async def sync(self):
+        if self.sync_lock.locked():
+            return {'message': '正在检查课程更新'}
+        async with self.sync_lock:
+            self.sync_status.update(running=True, message='正在检查跟踪课程…')
+            errors, new, added = [], 0, 0
+            try:
+                self.auth = await self.yanhe.status()
+                if not self.auth['logged_in']:
+                    raise ValueError(self.auth.get('message', '请重新登录'))
+                for cid, follow in list(self.library.data['tracked'].items()):
+                    course = next((c for c in self.courses if c['id'] == cid), None)
+                    if not course:
+                        continue
+                    self.sync_status['message'] = '正在检查：' + course['title']
+                    try:
+                        rows = await self.get_replays(cid)
+                        new += sum(r['is_new'] for r in rows)
+                        if follow['auto_download']:
+                            items = [{'course_id': cid, 'sub_id': r['id']} for r in rows if r['ready'] and any(k not in r['downloaded'] for k in follow['streams'])]
+                            if items:
+                                added += (await self.action('/api/queue', {'items': items, 'streams': follow['streams']}))['added']
+                    except Exception as exc:
+                        errors.append(course['title'] + '：' + (str(exc) if isinstance(exc, ValueError) else '网络请求失败'))
+                self.library.data['last_check'] = time.time()
+                self.library.save()
+                self.sync_status.update(last_check=self.library.data['last_check'], message=f'检查完成，{new} 节新回放，已加入 {added} 个下载任务' + ('；' + '；'.join(errors) if errors else ''))
+                return {'new': new, 'added': added, 'errors': errors}
+            except Exception as exc:
+                self.sync_status['message'] = str(exc) if isinstance(exc, ValueError) else '检查失败，请检查网络或重新登录'
+                raise ValueError(self.sync_status['message']) from None
+            finally:
+                self.sync_status['running'] = False
+
+    async def monitor(self):
+        while True:
+            await asyncio.sleep(15)
+            if self.interval and self.library.data['tracked'] and time.time() - self.library.data['last_check'] >= self.interval * 60:
+                try:
+                    await self.sync()
+                except ValueError:
+                    # Avoid hammering the site while the user needs to reauthenticate.
+                    await asyncio.sleep(self.interval * 60)
 
     async def action(self, path, body):
         if path == "/api/auth/check":
@@ -121,10 +176,57 @@ class App:
             if not self.auth["logged_in"]:
                 raise ValueError(self.auth.get("message", "请先登录"))
             self.courses = await self.yanhe.courses()
-            return {"courses": self.courses}
+            self.library.data['courses'] = self.courses
+            self.library.save()
+            return {"courses": self.library.summaries(self.jobs)}
         if path == "/api/replays":
             course = self.course(body.get("course_id"))
-            return {"replays": await self.yanhe.replays(course["id"])}
+            try:
+                return {"replays": await self.get_replays(course['id']), 'cached': False}
+            except Exception:
+                if course['id'] in self.library.data['replays']:
+                    return {'replays': self.library.decorate(course['id'], self.library.data['replays'][course['id']], self.jobs), 'cached': True}
+                raise
+        if path == '/api/track':
+            course = self.course(body.get('course_id'))
+            kinds = body.get('streams', ['teacher'])
+            if not isinstance(kinds, list) or not kinds or any(k not in STREAM_NAMES for k in kinds):
+                raise ValueError('请选择跟踪课程的下载画面')
+            if body.get('tracked'):
+                self.library.data['tracked'][course['id']] = {'streams': list(dict.fromkeys(kinds)), 'auto_download': bool(body.get('auto_download'))}
+            else:
+                self.library.data['tracked'].pop(course['id'], None)
+            self.library.save()
+            return {'ok': True}
+        if path == '/api/sync':
+            if not self.sync_task or self.sync_task.done():
+                async def check():
+                    try:
+                        await self.sync()
+                    except ValueError:
+                        pass  # The result is visible in sync_status.
+                self.sync_task = asyncio.create_task(check())
+            return {'message': '开始检查跟踪课程，进度将在界面中显示'}
+        if path == '/api/sync-settings':
+            minutes = body.get('check_minutes')
+            if minutes not in (0, 15, 30, 60, 120):
+                raise ValueError('请选择有效的更新检查间隔')
+            self.interval = minutes
+            self.save_settings()
+            return {'ok': True}
+        if path == '/api/scan':
+            return {'count': self.library.scan(self.outdir, self.jobs)}
+        if path == '/api/open-video':
+            row = self.library.file(str(body.get('course_id')), str(body.get('sub_id')), body.get('stream'))
+            if not row:
+                raise ValueError('本地视频已移动或删除，请扫描本地文件后重新下载')
+            open_local(row['path'])
+            return {'ok': True}
+        if path == '/api/choose-folder':
+            if not getattr(self, 'desktop', None):
+                raise ValueError('请选择或填写本地目录')
+            result = await asyncio.to_thread(self.desktop.choose_folder)
+            return {'outdir': result}
         if path == "/api/settings":
             if any(j["status"] in ("queued", "resolving", "downloading", "processing") for j in self.jobs):
                 raise ValueError("请等待或取消队列中的任务后修改保存目录")
@@ -134,47 +236,12 @@ class App:
             destination = Path(value).expanduser()
             self.outdir = (destination if destination.is_absolute() else ROOT / destination).resolve()
             self.outdir.mkdir(parents=True, exist_ok=True)
-            write_json(STATE / "settings.json", {"outdir": str(self.outdir)})
+            self.save_settings()
+            self.library.scan(self.outdir, self.jobs)
             return {"outdir": str(self.outdir)}
         if path == "/api/queue":
-            if not shutil.which("ffmpeg"):
-                raise ValueError("需要 FFmpeg 才能下载并合并回放，请先安装 FFmpeg")
-            items = body.get("items")
-            kinds = body.get("streams", ["teacher"])
-            if not isinstance(items, list) or not items or len(items) > 1000:
-                raise ValueError("请选择 1 至 1000 节回放")
-            if not isinstance(kinds, list) or not kinds or any(k not in STREAM_NAMES for k in kinds):
-                raise ValueError("请选择有效的视频画面")
-            ready = {}
-            planned = []
-            existing = {(j["course_id"], j["sub_id"], j["stream"]) for j in self.jobs
-                        if j["status"] in ("queued", "resolving", "downloading", "processing") or
-                        (j["status"] == "done" and Path(j["path"]).is_file())}
-            for item in items:
-                if not isinstance(item, dict):
-                    raise ValueError("回放选择格式错误")
-                course = self.course(item.get("course_id"))
-                cid = course["id"]
-                if cid not in ready:
-                    ready[cid] = {r["id"]: r for r in await self.yanhe.replays(cid) if r["ready"]}
-                replay = ready[cid].get(str(item.get("sub_id")))
-                if not replay:
-                    raise ValueError("选择中包含无权限、未开始或暂无回放的课时，请刷新")
-                for kind in dict.fromkeys(kinds):
-                    key = cid, replay["id"], kind
-                    if key in existing:
-                        continue
-                    existing.add(key)
-                    folder = self.outdir / safe_name(course["term"] or "未标记学期") / (safe_name(course["title"]) + "_" + cid)
-                    filename = safe_name(replay["title"]) + "_" + replay["id"] + "_" + STREAM_NAMES[kind] + ".mp4"
-                    planned.append({"id": secrets.token_hex(8), "course_id": cid, "sub_id": replay["id"],
-                          "course": course["title"], "title": replay["title"], "stream": kind,
-                          "status": "queued", "progress": 0, "bytes": 0, "error": "", "path": str(folder / filename)})
-            self.jobs.extend(planned)
-            self.persist()
-            for job in planned:
-                self.pending.put_nowait(job)
-            return {"added": len(planned)}
+            async with self.queue_lock:
+                return await self.enqueue(body)
         if path in ("/api/cancel", "/api/retry"):
             job = next((j for j in self.jobs if j["id"] == body.get("id")), None)
             if not job:
@@ -193,11 +260,52 @@ class App:
             return {"ok": True}
         if path == "/api/open-folder":
             self.outdir.mkdir(parents=True, exist_ok=True)
-            if sys.platform == "darwin": subprocess.Popen(["open", str(self.outdir)])
-            elif sys.platform == "win32": os.startfile(self.outdir)
-            else: subprocess.Popen(["xdg-open", str(self.outdir)])
+            open_local(self.outdir)
             return {"ok": True}
         raise ValueError("未知操作")
+
+    async def enqueue(self, body):
+        if not shutil.which("ffmpeg"):
+            raise ValueError("需要 FFmpeg 才能下载并合并回放，请先安装 FFmpeg")
+        items = body.get("items")
+        kinds = body.get("streams", ["teacher"])
+        if not isinstance(items, list) or not items or len(items) > 1000:
+            raise ValueError("请选择 1 至 1000 节回放")
+        if not isinstance(kinds, list) or not kinds or any(k not in STREAM_NAMES for k in kinds):
+            raise ValueError("请选择有效的视频画面")
+        ready = {}
+        planned = []
+        existing = {(j["course_id"], j["sub_id"], j["stream"]) for j in self.jobs
+                    if j["status"] in ("queued", "resolving", "downloading", "processing") or
+                    (j["status"] == "done" and self.library.file(j['course_id'], j['sub_id'], j['stream']))}
+        for item in items:
+            if not isinstance(item, dict):
+                raise ValueError("回放选择格式错误")
+            course = self.course(item.get("course_id"))
+            cid = course["id"]
+            if cid not in ready:
+                ready[cid] = {r["id"]: r for r in await self.yanhe.replays(cid) if r["ready"]}
+            replay = ready[cid].get(str(item.get("sub_id")))
+            if not replay:
+                raise ValueError("选择中包含无权限、未开始或暂无回放的课时，请刷新")
+            for kind in dict.fromkeys(kinds):
+                key = cid, replay["id"], kind
+                if key in existing or self.library.file(cid, replay['id'], kind):
+                    continue
+                existing.add(key)
+                folder = self.outdir / safe_name(course["term"] or "未标记学期") / (safe_name(course["title"]) + "_" + cid)
+                filename = safe_name(replay["title"]) + "_" + replay["id"] + "_" + STREAM_NAMES[kind] + ".mp4"
+                planned.append({"id": secrets.token_hex(8), "course_id": cid, "sub_id": replay["id"],
+                      "course": course["title"], "title": replay["title"], "stream": kind,
+                      "status": "queued", "progress": 0, "bytes": 0, "error": "", "path": str(folder / filename)})
+        self.jobs.extend(planned)
+        self.persist()
+        for job in planned:
+            self.pending.put_nowait(job)
+        return {"added": len(planned)}
+
+    def save_settings(self):
+        write_json(self.state_dir / 'settings.json', {'outdir': str(self.outdir), 'check_minutes': self.interval})
 
     def course(self, cid):
         course = next((c for c in self.courses if c["id"] == str(cid)), None)
@@ -223,6 +331,7 @@ class App:
                     self.loop.call_soon_threadsafe(target.update, data)
                 await asyncio.to_thread(download_media, source, Path(job["path"]), progress, cancelled)
                 job.update(status="done", progress=100, bytes=Path(job["path"]).stat().st_size, speed=None, eta=None)
+                self.library.scan(self.outdir, self.jobs)
             except Exception as exc:
                 if self.cancel_events.get(job["id"], threading.Event()).is_set():
                     job.update(status="cancelled", error="已取消，可重试继续下载")
@@ -234,6 +343,12 @@ class App:
                 self.cancel_events.pop(job["id"], None)
                 self.persist()
                 self.pending.task_done()
+
+
+def open_local(path):
+    if sys.platform == 'darwin': subprocess.Popen(['open', str(path)])
+    elif sys.platform == 'win32': os.startfile(str(path))
+    else: subprocess.Popen(['xdg-open', str(path)])
 
 
 def handler(app, token, port):
@@ -288,25 +403,40 @@ def handler(app, token, port):
     return Handler
 
 
-async def main(args):
-    STATE.mkdir(exist_ok=True, mode=0o700)
-    STATE.chmod(0o700)
-    app = App(args.outdir, args.concurrency)
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), handler(app, secrets.token_urlsafe(32), args.port))
+async def main(args, ready=None, external_stop=None, desktop=None):
+    directory = Path(getattr(args, 'state_dir', None) or STATE)
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    directory.chmod(0o700)
+    app = App(args.outdir, args.concurrency, directory, getattr(args, 'default_outdir', None))
+    app.desktop = desktop
+    server = ThreadingHTTPServer(("127.0.0.1", args.port), handler(app, secrets.token_urlsafe(32), 0))
+    server.RequestHandlerClass = handler(app, secrets.token_urlsafe(32), server.server_port)
     server.daemon_threads = True
     threading.Thread(target=server.serve_forever, daemon=True).start()
     app.worker_tasks = [asyncio.create_task(app.worker()) for _ in range(args.concurrency)]
-    url = f"http://127.0.0.1:{args.port}"
+    monitor = asyncio.create_task(app.monitor())
+    url = f"http://127.0.0.1:{server.server_port}"
     print(f"延河课堂下载工具：{url}\n保存目录：{app.outdir}\n按 Ctrl+C 停止", flush=True)
     if not args.no_open: webbrowser.open(url)
+    if ready:
+        ready(url)
     stop = asyncio.Event()
     for sig in (signal.SIGINT, signal.SIGTERM):
         try: asyncio.get_running_loop().add_signal_handler(sig, stop.set)
-        except NotImplementedError: pass
+        except (NotImplementedError, RuntimeError, ValueError): pass
     try:
-        await stop.wait()
+        if external_stop:
+            while not external_stop.is_set():
+                await asyncio.sleep(.25)
+        else:
+            await stop.wait()
     finally:
         for event in app.cancel_events.values(): event.set()
+        monitor.cancel()
+        await asyncio.gather(monitor, return_exceptions=True)
+        if app.sync_task:
+            app.sync_task.cancel()
+            await asyncio.gather(app.sync_task, return_exceptions=True)
         for job in app.jobs:
             if job["status"] == "queued": job.update(status="cancelled", error="程序已退出，可重试继续下载")
         # Let current downloads reach cancellation before closing their browser context.

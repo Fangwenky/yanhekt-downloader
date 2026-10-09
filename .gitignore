@@ -30,3 +30,10 @@ __pycache__/
 .DS_Store
 Thumbs.db
 *.log
+
+# 桌面构建与安装包
+build/
+dist/
+.build-browsers/
+*.dmg
+*.zip

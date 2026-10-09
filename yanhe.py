@@ -86,7 +86,7 @@ class Yanhe:
             return
         if not self.pw:
             self.pw = await async_playwright().start()
-        self.browser = await self.pw.chromium.launch(headless=not headed)
+        self.browser = await self.pw.chromium.launch(headless=not headed, channel='chromium')
         self.context = await self.browser.new_context(
             storage_state=str(self.state_file) if self.state_file.exists() else None)
 
