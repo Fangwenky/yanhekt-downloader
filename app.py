@@ -12,10 +12,10 @@ import sys
 import threading
 import tempfile
 import time
-import traceback
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from socketserver import TCPServer
 from urllib.parse import urlsplit
 
 from yt_dlp import YoutubeDL
@@ -75,10 +75,17 @@ def download_media(source, destination, progress, cancelled):
             try:
                 ydl.extract_info(url, download=True)
             except Exception as exc:
-                # yt-dlp's HLS exception frames can retain open fragment files.
-                # Release those inactive frames so cancellation permits an
-                # immediate retry on Windows, where open files cannot be replaced.
-                traceback.clear_frames(exc.__traceback__)
+                # HLS progress callbacks retain the fragment context in a
+                # closure, even after an exception. Explicitly close its output
+                # to permit immediate retry on Windows (yt-dlp has no public
+                # cancellation/close API for this context).
+                frame = exc.__traceback__
+                while frame:
+                    if frame.tb_frame.f_globals.get('__name__', '').startswith('yt_dlp.downloader.'):
+                        context = frame.tb_frame.f_locals.get('ctx')
+                        if isinstance(context, dict) and context.get('dest_stream'):
+                            context['dest_stream'].close()
+                    frame = frame.tb_next
                 raise
     if cancelled.is_set():
         raise RuntimeError("下载已取消")
@@ -413,13 +420,21 @@ def handler(app, token, port):
     return Handler
 
 
+class LocalServer(ThreadingHTTPServer):
+    def server_bind(self):
+        # The numeric loopback address needs no reverse-DNS lookup. Some Mac
+        # networks/build hosts block getfqdn(), delaying the startup window.
+        TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address[:2]
+
+
 async def main(args, ready=None, external_stop=None, desktop=None):
     directory = Path(getattr(args, 'state_dir', None) or STATE)
     directory.mkdir(parents=True, exist_ok=True, mode=0o700)
     directory.chmod(0o700)
     app = App(args.outdir, args.concurrency, directory, getattr(args, 'default_outdir', None))
     app.desktop = desktop
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), handler(app, secrets.token_urlsafe(32), 0))
+    server = LocalServer(("127.0.0.1", args.port), handler(app, secrets.token_urlsafe(32), 0))
     server.RequestHandlerClass = handler(app, secrets.token_urlsafe(32), server.server_port)
     server.daemon_threads = True
     threading.Thread(target=server.serve_forever, daemon=True).start()

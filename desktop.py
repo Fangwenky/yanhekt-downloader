@@ -120,7 +120,12 @@ def launch(directory, ui_smoke=False):
             started.put(exc)
     service = threading.Thread(target=serve, daemon=True)
     service.start()
-    result = started.get(timeout=30)
+    try:
+        result = started.get(timeout=30)
+    except queue.Empty:
+        import traceback
+        traceback.print_stack(sys._current_frames()[service.ident], file=sys.stderr)
+        raise RuntimeError('本地课程服务未能启动，请查看 desktop.log') from None
     if isinstance(result, Exception):
         raise result
     desktop.window = webview.create_window('延河课堂 · 课程管理', result, width=1280, height=900, min_size=(840, 600), hidden=ui_smoke)

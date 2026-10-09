@@ -157,8 +157,17 @@ class DownloadTest(unittest.TestCase):
                 # Cancel after opening the output, then immediately remove the
                 # partial files: Windows must not retain a locked HLS handle.
                 cancelled.clear()
-                with self.assertRaises(Exception):
+                from yt_dlp.downloader.fragment import FragmentFD
+                opened = []
+                original = FragmentFD.sanitize_open
+                def record_open(downloader, filename, mode):
+                    result = original(downloader, filename, mode)
+                    opened.append(result[0])
+                    return result
+                with patch.object(FragmentFD, 'sanitize_open', record_open), self.assertRaises(Exception):
                     download_media(source, root/'mid-cancel.mp4', lambda data: cancelled.set(), cancelled)
+                self.assertTrue(opened)
+                self.assertTrue(all(stream.closed for stream in opened))
                 for partial in root.glob('mid-cancel*'):
                     partial.unlink()
             finally:
