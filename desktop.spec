@@ -11,7 +11,17 @@ if not browsers.is_dir():
     raise RuntimeError('Run build_desktop.py to install the bundled browser first')
 binaries = []
 for program in ('ffmpeg', 'ffprobe'):
-    location = shutil.which(program)
+    configured = os.environ.get('YANHEKT_FFMPEG_DIR')
+    location = str(Path(configured) / (program + ('.exe' if sys.platform == 'win32' else ''))) if configured else shutil.which(program)
+    if sys.platform == 'win32' and not configured:
+        # Chocolatey's PATH entry is a launcher shim. Ship the actual program,
+        # which must also work on computers without Chocolatey installed.
+        chocolatey = Path(os.environ.get('ChocolateyInstall', r'C:\ProgramData\chocolatey'))
+        if location and Path(location).parent == chocolatey / 'bin':
+            candidates = list((chocolatey / 'lib/ffmpeg').rglob(program + '.exe'))
+            if not candidates:
+                raise RuntimeError('Cannot locate the actual ' + program + ' binary; set YANHEKT_FFMPEG_DIR')
+            location = str(candidates[0])
     if not location:
         raise RuntimeError(program + ' is required for packaging')
     binaries.append((str(Path(location).resolve()), 'bin'))

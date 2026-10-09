@@ -7,6 +7,7 @@ import queue
 import shutil
 import sys
 import threading
+import time
 from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
@@ -136,7 +137,12 @@ def launch(directory, ui_smoke=False):
         def loaded():
             valid = False
             try:
-                valid = desktop.window.evaluate_js("document.getElementById('course-title').textContent === '选择一门课程' && document.querySelectorAll('.tabs button').length === 3")
+                deadline = time.monotonic() + 10
+                while time.monotonic() < deadline:
+                    valid = desktop.window.evaluate_js("document.getElementById('footer-status').textContent === '本地资料库已连接' && document.querySelectorAll('.tabs button').length === 3")
+                    if valid:
+                        break
+                    time.sleep(.1)
                 if valid:
                     (directory / 'ui-ok.txt').write_text('native window + local UI OK', encoding='utf-8')
             finally:
@@ -153,4 +159,16 @@ def launch(directory, ui_smoke=False):
 
 
 if __name__ == '__main__':
-    run()
+    try:
+        run()
+    except Exception:
+        if '--smoke-test' in sys.argv or '--ui-smoke-test' in sys.argv:
+            # A windowed Windows executable otherwise shows a crash dialog,
+            # leaving unattended build checks waiting for someone to dismiss it.
+            import traceback
+            target = Path(sys.argv[sys.argv.index('--state-dir') + 1]) if '--state-dir' in sys.argv else user_data_dir()
+            target.mkdir(parents=True, exist_ok=True)
+            with open(target / 'smoke-error.log', 'w', encoding='utf-8') as log:
+                traceback.print_exc(file=log)
+            os._exit(1)
+        raise
