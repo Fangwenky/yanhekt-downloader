@@ -1,6 +1,6 @@
 # 延河课堂 · 课程与录播管理
 
-北京理工大学新版[延河课堂](https://aita.yanhekt.cn/education/?tenant_code=21#/home?menu_code=C-xswdkc,-1)的本地桌面软件。支持 **macOS（Apple Silicon）和 Windows（x64）**，通过北理统一认证拉取个人课程，查看回放，长期跟踪更新并批量下载到统一视频目录。
+北京理工大学新版[延河课堂](https://aita.yanhekt.cn/education/?tenant_code=21#/home?menu_code=C-xswdkc,-1)的本地桌面软件。提供 **macOS 15+（Apple Silicon）和 Windows 10 / 11（x64）** 安装包，通过北理统一认证拉取个人课程，查看回放，长期跟踪更新并批量下载到统一视频目录。
 
 ## 下载与安装
 

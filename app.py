@@ -441,7 +441,8 @@ async def main(args, ready=None, external_stop=None, desktop=None):
     app.worker_tasks = [asyncio.create_task(app.worker()) for _ in range(args.concurrency)]
     monitor = asyncio.create_task(app.monitor())
     url = f"http://127.0.0.1:{server.server_port}"
-    print(f"延河课堂下载工具：{url}\n保存目录：{app.outdir}\n按 Ctrl+C 停止", flush=True)
+    if not desktop:
+        print(f"延河课堂下载工具：{url}\n保存目录：{app.outdir}\n按 Ctrl+C 停止", flush=True)
     if not args.no_open: webbrowser.open(url)
     if ready:
         ready(url)

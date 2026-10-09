@@ -102,7 +102,7 @@ def run():
         return
     legacy = args.migrate_from or (str(resources) if not frozen else None)
     directory = prepare_data(args.state_dir or user_data_dir(), legacy)
-    if sys.stdout is None:
+    if frozen or sys.stdout is None:
         log = open(directory / 'desktop.log', 'a', encoding='utf-8', buffering=1)
         sys.stdout = sys.stderr = log
     with instance_lock(directory):
@@ -152,7 +152,7 @@ def launch(directory, ui_smoke=False):
         desktop.window.events.loaded += loaded
     desktop.window.events.closed += stop.set
     try:
-        webview.start()
+        webview.start(gui='edgechromium' if sys.platform == 'win32' else None)
     finally:
         stop.set()
         service.join(timeout=90)

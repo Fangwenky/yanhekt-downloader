@@ -33,6 +33,12 @@ jobs:
         run: python -m unittest -v test_app.py test_library.py
       - name: Build native app
         run: python build_desktop.py
+      - name: Prepare Windows WebView2 runtime
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Invoke-WebRequest 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile build/MicrosoftEdgeWebview2Setup.exe
+          Start-Process -FilePath build/MicrosoftEdgeWebview2Setup.exe -ArgumentList '/silent /install' -Wait
       - name: Check packaged macOS dependencies
         if: runner.os == 'macOS'
         run: |
@@ -53,7 +59,6 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          Invoke-WebRequest 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile build/MicrosoftEdgeWebview2Setup.exe
           & 'C:/Program Files (x86)/Inno Setup 6/ISCC.exe' packaging/windows.iss
           if ($LASTEXITCODE -ne 0) { throw 'Installer build failed' }
       - name: Windows diagnostic logs
