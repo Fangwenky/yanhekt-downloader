@@ -77,6 +77,7 @@ def run():
     parser.add_argument('--state-dir')
     parser.add_argument('--migrate-from', help='导入旧版工具的本地记录，保留原视频位置')
     parser.add_argument('--smoke-test', action='store_true')
+    parser.add_argument('--ui-smoke-test', action='store_true')
     args = parser.parse_args()
     frozen = bool(getattr(sys, 'frozen', False))
     resources = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent))
@@ -104,10 +105,10 @@ def run():
         log = open(directory / 'desktop.log', 'a', encoding='utf-8', buffering=1)
         sys.stdout = sys.stderr = log
     with instance_lock(directory):
-        launch(directory)
+        launch(directory, args.ui_smoke_test)
 
 
-def launch(directory):
+def launch(directory, ui_smoke=False):
     desktop, stop, started = Desktop(), threading.Event(), queue.Queue()
     videos = 'Videos' if sys.platform == 'win32' else 'Movies'
     settings = SimpleNamespace(outdir=None, default_outdir=str(Path.home() / videos / '延河课堂'),
@@ -122,7 +123,22 @@ def launch(directory):
     result = started.get(timeout=30)
     if isinstance(result, Exception):
         raise result
-    desktop.window = webview.create_window('延河课堂 · 课程管理', result, width=1280, height=900, min_size=(840, 600))
+    desktop.window = webview.create_window('延河课堂 · 课程管理', result, width=1280, height=900, min_size=(840, 600), hidden=ui_smoke)
+    if ui_smoke:
+        # Bound GUI checks on unattended build machines. AppKit can keep its
+        # event loop alive after closing a hidden test window.
+        threading.Timer(60, lambda: os._exit(1)).start()
+        def loaded():
+            valid = False
+            try:
+                valid = desktop.window.evaluate_js("document.getElementById('course-title').textContent === '选择一门课程' && document.querySelectorAll('.tabs button').length === 3")
+                if valid:
+                    (directory / 'ui-ok.txt').write_text('native window + local UI OK', encoding='utf-8')
+            finally:
+                stop.set()
+                service.join(timeout=10)
+                os._exit(0 if valid else 1)
+        desktop.window.events.loaded += loaded
     desktop.window.events.closed += stop.set
     try:
         webview.start()

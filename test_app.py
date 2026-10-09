@@ -154,6 +154,13 @@ class DownloadTest(unittest.TestCase):
                 cancelled.set()
                 with self.assertRaises(Exception):
                     download_media(source, root/'cancelled.mp4', lambda data: None, cancelled)
+                # Cancel after opening the output, then immediately remove the
+                # partial files: Windows must not retain a locked HLS handle.
+                cancelled.clear()
+                with self.assertRaises(Exception):
+                    download_media(source, root/'mid-cancel.mp4', lambda data: cancelled.set(), cancelled)
+                for partial in root.glob('mid-cancel*'):
+                    partial.unlink()
             finally:
                 server.shutdown()
                 server.server_close()

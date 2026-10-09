@@ -12,6 +12,7 @@ import sys
 import threading
 import tempfile
 import time
+import traceback
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -33,6 +34,8 @@ class QuietLogger:
 
 
 def download_media(source, destination, progress, cancelled):
+    if cancelled.is_set():
+        raise RuntimeError('下载已取消')
     def hook(data):
         if cancelled.is_set():
             raise RuntimeError("下载已取消")
@@ -69,7 +72,14 @@ def download_media(source, destination, progress, cancelled):
                         row["secure"], int(expires) if expires > 0 else None, expires <= 0,
                         None, None, {"HttpOnly": row.get("httpOnly", False)})
                 ydl.cookiejar.set_cookie(cookie)
-            ydl.extract_info(url, download=True)
+            try:
+                ydl.extract_info(url, download=True)
+            except Exception as exc:
+                # yt-dlp's HLS exception frames can retain open fragment files.
+                # Release those inactive frames so cancellation permits an
+                # immediate retry on Windows, where open files cannot be replaced.
+                traceback.clear_frames(exc.__traceback__)
+                raise
     if cancelled.is_set():
         raise RuntimeError("下载已取消")
     if not destination.is_file() or not destination.stat().st_size:

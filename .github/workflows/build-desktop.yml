@@ -16,6 +16,7 @@ jobs:
           - os: windows-latest
             label: Windows-x64
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -37,6 +38,8 @@ jobs:
         run: |
           "dist/延河课堂.app/Contents/MacOS/YanhektDownloader" --smoke-test --state-dir build/smoke
           test -f build/smoke/smoke-ok.txt
+          "dist/延河课堂.app/Contents/MacOS/YanhektDownloader" --ui-smoke-test --state-dir build/ui-smoke
+          test -f build/ui-smoke/ui-ok.txt
           ditto -c -k --sequesterRsrc --keepParent "dist/延河课堂.app" dist/Yanhekt-macOS-arm64.zip
       - name: Check packaged Windows dependencies
         if: runner.os == 'Windows'
@@ -44,6 +47,8 @@ jobs:
         run: |
           $p = Start-Process -FilePath dist/YanhektDownloader/YanhektDownloader.exe -ArgumentList '--smoke-test --state-dir build/smoke' -Wait -PassThru
           if ($p.ExitCode -ne 0 -or !(Test-Path build/smoke/smoke-ok.txt)) { throw 'Packaged browser/FFmpeg check failed' }
+          $p = Start-Process -FilePath dist/YanhektDownloader/YanhektDownloader.exe -ArgumentList '--ui-smoke-test --state-dir build/ui-smoke' -Wait -PassThru
+          if ($p.ExitCode -ne 0 -or !(Test-Path build/ui-smoke/ui-ok.txt)) { throw 'Packaged native UI check failed' }
       - name: Windows installer
         if: runner.os == 'Windows'
         shell: pwsh
