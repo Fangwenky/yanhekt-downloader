@@ -121,6 +121,14 @@ class QueueTest(unittest.IsolatedAsyncioTestCase):
 class SilentHTTP(SimpleHTTPRequestHandler):
     def log_message(self, *args): pass
 
+    def do_GET(self):
+        # Match the platform's media endpoint: navigation requests fail with
+        # 403 even when the signed URL and login session are valid.
+        if self.headers.get('Sec-Fetch-Mode') != 'cors':
+            self.send_error(403)
+            return
+        super().do_GET()
+
 
 @unittest.skipUnless(shutil.which('ffmpeg'), '需要 FFmpeg 运行下载测试')
 class DownloadTest(unittest.TestCase):

@@ -37,5 +37,5 @@ exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name='YanhektDownloader',
 coll = COLLECT(exe, a.binaries, a.datas, strip=False, upx=False, name='YanhektDownloader')
 if sys.platform == 'darwin':
     app = BUNDLE(coll, name='延河课堂.app', bundle_identifier='cn.yanhekt.downloader',
-        info_plist={'CFBundleShortVersionString':'0.2.0', 'NSHighResolutionCapable':True,
+        info_plist={'CFBundleShortVersionString':'0.2.1', 'NSHighResolutionCapable':True,
                     'NSAppTransportSecurity':{'NSAllowsLocalNetworking':True}})

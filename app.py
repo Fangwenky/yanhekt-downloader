@@ -4,6 +4,7 @@ import asyncio
 import http.cookiejar
 import json
 import os
+import re
 import secrets
 import shutil
 import signal
@@ -52,7 +53,10 @@ def download_media(source, destination, progress, cancelled):
                "logger": QuietLogger(), "progress_hooks": [hook], "continuedl": True,
                "overwrites": False, "retries": 3, "fragment_retries": 3, "socket_timeout": 20,
                "concurrent_fragment_downloads": 2, "skip_unavailable_fragments": False,
-               "http_headers": {"Referer": source["referer"], "User-Agent": source["user_agent"]},
+               # yt-dlp defaults to a document navigation; the video server
+               # rejects that fetch mode. Match the player's XHR media requests.
+               "http_headers": {"Referer": source["referer"], "User-Agent": source["user_agent"],
+                                "Sec-Fetch-Mode": "cors", "Accept": "*/*"},
                "postprocessors": [{"key": "FFmpegVideoRemuxer", "preferedformat": "mp4"}]}
     with tempfile.TemporaryDirectory(prefix='yanhe-media-') as temporary:
         url = source['url']
@@ -355,6 +359,10 @@ class App:
                 else:
                     # yt-dlp errors contain signed URLs; keep those out of the UI and logs.
                     message = str(exc) if isinstance(exc, ValueError) else "下载失败，请检查网络、登录状态和 FFmpeg；可点击重试"
+                    http_error = re.search(r'HTTP Error (\d{3})\b', str(exc))
+                    if http_error:
+                        message = f"视频服务器拒绝或未能完成请求（HTTP {http_error[1]}），可点击重试获取新视频地址"
+                    print(f"Download failed: {type(exc).__name__}" + (f" HTTP {http_error[1]}" if http_error else ''), file=sys.stderr, flush=True)
                     job.update(status="failed", error=message, speed=None, eta=None)
             finally:
                 self.cancel_events.pop(job["id"], None)

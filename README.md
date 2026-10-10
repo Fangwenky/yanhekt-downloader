@@ -15,6 +15,8 @@
 
 当前安装包没有 Apple 开发者公证或 Windows 代码签名。macOS 若提示无法验证开发者，可在「系统设置 → 隐私与安全性」中允许打开已下载的应用。Windows 若显示 SmartScreen，可核对下载来源后选择「更多信息 → 仍要运行」。Intel Mac 暂未提供预构建包，可从源码运行或在 Intel Mac 上自行构建。
 
+**v0.2.1** 修复有效登录后下载回放仍返回 HTTP 403 的问题：视频请求现在与官网播放器的媒体请求方式一致。升级后，在「下载队列」点击失败任务的「重试」即可；原有视频目录、登录和跟踪记录会保留。
+
 尚未发布的构建也可从 [GitHub Actions](https://github.com/Fangwenky/yanhekt-downloader/actions/workflows/build-desktop.yml) 的成功运行中下载 Artifacts（需登录 GitHub，保存 30 天）。
 
 ## 功能

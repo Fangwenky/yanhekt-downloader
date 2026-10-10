@@ -1,4 +1,4 @@
-#define MyAppVersion "0.2.0"
+#define MyAppVersion "0.2.1"
 [Setup]
 AppId={{5D95E7A8-A208-43C6-9876-F00B049BAC56}
 AppName=延河课堂
